@@ -1,0 +1,9 @@
+# Ignores artifacts
+zig-cache
+zig-out
+
+# Ignores scratchpad
+temp.zig
+
+# Ignores Vscode settings
+.vscode
