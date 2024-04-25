@@ -68,21 +68,22 @@ pub const TokenRanker = struct {
     pub fn tokenize(self: Self, data: []const u8, allocator: std.mem.Allocator) ![]const u32 {
         var start_pointer: usize = 0;
         var end_pointer: usize = 0;
+        var moving_pointer: usize = 0;
         var tokens = std.ArrayList(u32).init(allocator);
         var token_id: u32 = undefined;
-        while (end_pointer < data.len + 1) {
-            if (end_pointer == data.len) {
-                try tokens.append(token_id);
-                break;
+        while (start_pointer < data.len) {
+            while (moving_pointer < data.len) {
+                const o_token_id = self.str_to_id.get(data[start_pointer .. moving_pointer + 1]);
+                if (o_token_id) |latest_token_id| {
+                    token_id = latest_token_id;
+                    end_pointer = moving_pointer;
+                }
+                moving_pointer += 1;
             }
-            const o_token_id = self.str_to_id.get(data[start_pointer .. end_pointer + 1]);
-            if (o_token_id) |latest_token_id| {
-                token_id = latest_token_id;
-                end_pointer += 1;
-            } else {
-                try tokens.append(token_id);
-                start_pointer = end_pointer;
-            }
+            try tokens.append(token_id);
+            start_pointer = end_pointer + 1;
+            moving_pointer = start_pointer;
+            // break;
         }
         return tokens.toOwnedSlice();
     }
@@ -134,9 +135,9 @@ test "tokenizes" {
     const allocator = std.testing.allocator;
     var tr = try TokenRanker.from_file("test/gpt2_tokens", allocator);
     defer tr.free();
-    const tokens = try tr.tokenize("ousrtr", allocator);
+    const tokens = try tr.tokenize("Ġmeousrtr", allocator);
     defer allocator.free(tokens);
-    const actual: []const u32 = &.{ 516, 82, 84, 82 };
+    const actual: []const u32 = &.{ 502, 516, 82, 84, 82 };
     try std.testing.expect(std.mem.eql(u32, tokens, actual));
 }
 
@@ -144,7 +145,7 @@ test "detokenize" {
     const allocator = std.testing.allocator;
     var tr = try TokenRanker.from_file("test/gpt2_tokens", allocator);
     defer tr.free();
-    const text = try tr.detokenize(&.{ 516, 82, 84, 82 }, allocator);
+    const text = try tr.detokenize(&.{ 502, 516, 82, 84, 82 }, allocator);
     defer allocator.free(text);
-    try std.testing.expect(std.mem.eql(u8, text, "ousrtr"));
+    try std.testing.expect(std.mem.eql(u8, text, "Ġmeousrtr"));
 }
