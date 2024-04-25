@@ -49,7 +49,7 @@ pub const TokenRanker = struct {
 
     pub fn from_string(content: []const u8, allocator: std.mem.Allocator) !Self {
         var hashmap = std.StringHashMap(u32).init(allocator);
-        var bucket = try std.ArrayList(u8).initCapacity(allocator, 50000);
+        var bucket = try std.ArrayList(u8).initCapacity(allocator, 512 + content.len);
         bucket.expandToCapacity();
         var bucket_pointer = try Self._char_vocab(&bucket, &hashmap);
         var splits = std.mem.splitScalar(u8, content, '\n');
@@ -99,10 +99,7 @@ pub const TokenRanker = struct {
 test "TokenRankerBasic" {
     var tr = try TokenRanker.from_string("", std.testing.allocator);
     defer tr.free();
-    var iter = tr.str_to_id.iterator();
-    while (iter.next()) |kv| {
-        std.debug.print("{s}:{d}\n", .{ kv.key_ptr.*, kv.value_ptr.* });
-    }
+    try std.testing.expectEqual(tr.str_to_id.count(), 256);
 }
 
 test "TokenRanker" {
@@ -144,6 +141,20 @@ test "tokenizes" {
 test "detokenize" {
     const allocator = std.testing.allocator;
     var tr = try TokenRanker.from_file("test/gpt2_tokens", allocator);
+    defer tr.free();
+    const text = try tr.detokenize(&.{ 502, 516, 82, 84, 82 }, allocator);
+    defer allocator.free(text);
+    try std.testing.expect(std.mem.eql(u8, text, "Ġmeousrtr"));
+}
+
+// This runs against larger GPT2 Token File
+test "Skip" {
+    const d = fs.cwd();
+    _ = d.openFile("scratchpad/gpt2tokens", .{}) catch {
+        return error.SkipZigTest;
+    };
+    const allocator = std.testing.allocator;
+    var tr = try TokenRanker.from_file("scratchpad/gpt2tokens", allocator);
     defer tr.free();
     const text = try tr.detokenize(&.{ 502, 516, 82, 84, 82 }, allocator);
     defer allocator.free(text);

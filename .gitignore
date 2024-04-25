@@ -3,7 +3,7 @@ zig-cache
 zig-out
 
 # Ignores scratchpad
-temp.zig
+scratchpad
 
 # Ignores Vscode settings
 .vscode
