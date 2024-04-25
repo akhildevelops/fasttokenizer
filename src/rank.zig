@@ -9,7 +9,6 @@ pub const TokenRanker = struct {
     allocator: std.mem.Allocator,
     _inner_bucket: std.ArrayList(u8),
     const Self = @This();
-    const B = struct { usize, usize, u32 };
     pub fn free(self: *Self) void {
         // Frees up bucket
         self.allocator.free(self._inner_bucket.items);
@@ -65,40 +64,27 @@ pub const TokenRanker = struct {
         const id_to_str = try utils.revStrHashMap(u32, hashmap, allocator);
         return Self{ .str_to_id = hashmap, .id_to_str = id_to_str, ._inner_bucket = bucket, .allocator = allocator };
     }
-    fn _is_present(element: B, index: usize) bool {
-        return element[0] == index;
-    }
-    fn _less_s(_: void, lhs: B, rhs: B) bool {
-        return lhs[0] < rhs[0];
-    }
+
     pub fn tokenize(self: Self, data: []const u8, allocator: std.mem.Allocator) ![]const u32 {
-        // _ = self;
-        // _ = data;
-        var temp_arr = std.ArrayList(B).init(allocator);
-        defer temp_arr.clearAndFree();
-        const n_tokens = self.str_to_id.count();
-        for (0..n_tokens) |index| {
-            const kindex = n_tokens - @as(u32, @intCast(index)) - 1;
-            const kv = self.id_to_str.getEntry(kindex).?;
-            var multi_index_iter = utils.multiIndexOf(u8, data, kv.value_ptr.*);
-            while (multi_index_iter.next()) |mindex| {
-                // std.debug.print("{d}:{d}:{s}\n", .{ mindex, kindex, kv.value_ptr.* });
-                var multi_iter = utils.multiIndexOfContext(B, temp_arr.items, mindex, _is_present);
-                // _ = multi_iter;
-                if (multi_iter.next()) |_| {
-                    break;
-                } else {
-                    try temp_arr.append(.{ mindex, kv.value_ptr.*.len, kv.key_ptr.* });
-                }
+        var start_pointer: usize = 0;
+        var end_pointer: usize = 0;
+        var tokens = std.ArrayList(u32).init(allocator);
+        var token_id: u32 = undefined;
+        while (end_pointer < data.len + 1) {
+            if (end_pointer == data.len) {
+                try tokens.append(token_id);
+                break;
+            }
+            const o_token_id = self.str_to_id.get(data[start_pointer .. end_pointer + 1]);
+            if (o_token_id) |latest_token_id| {
+                token_id = latest_token_id;
+                end_pointer += 1;
+            } else {
+                try tokens.append(token_id);
+                start_pointer = end_pointer;
             }
         }
-        std.mem.sort(B, temp_arr.items, {}, _less_s);
-        var tokens = try std.ArrayList(u32).initCapacity(allocator, temp_arr.items.len);
-        for (temp_arr.items) |iitem| {
-            try tokens.append(iitem[2]);
-        }
         return tokens.toOwnedSlice();
-        // return error.hefwaefh;
     }
     pub fn detokenize(self: Self, tokens: []const u32, allocator: std.mem.Allocator) ![]const u8 {
         var text = std.ArrayList(u8).init(allocator);
@@ -150,8 +136,7 @@ test "tokenizes" {
     defer tr.free();
     const tokens = try tr.tokenize("ousrtr", allocator);
     defer allocator.free(tokens);
-    const actual: []const u32 = &.{ 516, 385, 83, 82, 84 };
-    std.debug.print("{any}\n", .{tokens});
+    const actual: []const u32 = &.{ 516, 82, 84, 82 };
     try std.testing.expect(std.mem.eql(u32, tokens, actual));
 }
 
@@ -159,7 +144,7 @@ test "detokenize" {
     const allocator = std.testing.allocator;
     var tr = try TokenRanker.from_file("test/gpt2_tokens", allocator);
     defer tr.free();
-    const text = try tr.detokenize(&.{ 516, 385, 83, 82, 84 }, allocator);
+    const text = try tr.detokenize(&.{ 516, 82, 84, 82 }, allocator);
     defer allocator.free(text);
-    std.debug.print("{s}\n", .{text});
+    try std.testing.expect(std.mem.eql(u8, text, "ousrtr"));
 }
