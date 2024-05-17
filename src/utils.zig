@@ -1,4 +1,15 @@
 const std = @import("std");
+const jstring = @import("jstring");
+
+pub const Regex = struct {
+    regex: jstring.Regex,
+    const Self = @This();
+
+    pub fn init(pattern: []const u8, allocator: std.mem.Allocator) !Self {
+        return .{ .regex = try jstring.Regex.init(allocator, pattern, 0) };
+    }
+};
+
 pub const String = struct {
     str: []const u8,
     const Self = @This();
@@ -64,6 +75,7 @@ pub fn multiIndexOfContext(
 ) MultiIndexContextIterator(T, @TypeOf(context), check) {
     return MultiIndexContextIterator(T, @TypeOf(context), check){ .start_index = 0, .haystack = haystack, .context = context };
 }
+
 fn iseven(x: u8, _: void) bool {
     return x % 2 == 0;
 }

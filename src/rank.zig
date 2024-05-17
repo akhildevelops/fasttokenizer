@@ -1,5 +1,6 @@
 const std = @import("std");
 const utils = @import("./utils.zig");
+const Regex = @import("jstring").Regex;
 const fs = std.fs;
 const io = std.io;
 
@@ -8,9 +9,11 @@ pub const TokenRanker = struct {
     id_to_str: std.HashMap(u32, []const u8, std.hash_map.AutoContext(u32), std.hash_map.default_max_load_percentage),
     allocator: std.mem.Allocator,
     _inner_bucket: std.ArrayList(u8),
+    regex: Regex,
     const Self = @This();
     pub fn free(self: *Self) void {
         // Frees up bucket
+        self.regex.deinit();
         self.allocator.free(self._inner_bucket.items);
         self.str_to_id.clearAndFree();
         self.id_to_str.clearAndFree();
@@ -62,30 +65,45 @@ pub const TokenRanker = struct {
             bucket_pointer += line.len - 1;
         }
         const id_to_str = try utils.revStrHashMap(u32, hashmap, allocator);
-        return Self{ .str_to_id = hashmap, .id_to_str = id_to_str, ._inner_bucket = bucket, .allocator = allocator };
+        //IMPROVE: Make it modular
+        const re = try Regex.init(allocator,
+            \\'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+
+        , 0x00080000);
+        return Self{ .str_to_id = hashmap, .id_to_str = id_to_str, ._inner_bucket = bucket, .allocator = allocator, .regex = re };
     }
 
-    pub fn tokenize(self: Self, data: []const u8, allocator: std.mem.Allocator) ![]const u32 {
-        var start_pointer: usize = 0;
-        var end_pointer: usize = 0;
-        var moving_pointer: usize = 0;
-        var tokens = std.ArrayList(u32).init(allocator);
-        var token_id: u32 = undefined;
-        while (start_pointer < data.len) {
-            while (moving_pointer < data.len) {
-                const o_token_id = self.str_to_id.get(data[start_pointer .. moving_pointer + 1]);
-                if (o_token_id) |latest_token_id| {
-                    token_id = latest_token_id;
-                    end_pointer = moving_pointer;
-                }
-                moving_pointer += 1;
-            }
-            try tokens.append(token_id);
-            start_pointer = end_pointer + 1;
-            moving_pointer = start_pointer;
-            // break;
+    pub fn tokenize(self: *Self, data: []const u8, allocator: std.mem.Allocator) ![]const u32 {
+        try self.regex.matchAll(data, 0, 0);
+        if (!self.regex.succeed()) {
+            return error.RegexMatchFailed;
         }
-        return tokens.toOwnedSlice();
+        const results = self.regex.getResults().?;
+        var merge_tokens = std.ArrayList(u32).init(allocator);
+        for (results) |matched_result| {
+            const substr: []const u8 = data[matched_result.start .. matched_result.start + matched_result.len];
+            var start_pointer: usize = 0;
+            var end_pointer: usize = 0;
+            var moving_pointer: usize = 0;
+            var tokens = std.ArrayList(u32).init(allocator);
+            var token_id: u32 = undefined;
+            while (start_pointer < substr.len) {
+                while (moving_pointer < substr.len) {
+                    const o_token_id = self.str_to_id.get(substr[start_pointer .. moving_pointer + 1]);
+                    if (o_token_id) |latest_token_id| {
+                        token_id = latest_token_id;
+                        end_pointer = moving_pointer;
+                    }
+                    moving_pointer += 1;
+                }
+                try tokens.append(token_id);
+                start_pointer = end_pointer + 1;
+                moving_pointer = start_pointer;
+            }
+            try merge_tokens.appendSlice(tokens.items);
+            tokens.deinit();
+        }
+        try self.regex.reset();
+        return merge_tokens.toOwnedSlice();
     }
     pub fn detokenize(self: Self, tokens: []const u32, allocator: std.mem.Allocator) ![]const u8 {
         var text = std.ArrayList(u8).init(allocator);
