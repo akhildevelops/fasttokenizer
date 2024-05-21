@@ -1,1 +1,1 @@
-usingnamespace @import("./rank.zig");
+pub usingnamespace @import("./rank.zig");

@@ -1,22 +1,31 @@
 const std = @import("std");
+const B64Decoder = std.base64.standard.Decoder;
 const utils = @import("./utils.zig");
 const Regex = @import("jstring").Regex;
 const fs = std.fs;
 const io = std.io;
 
+const T = struct { usize, usize };
+
+fn _less_than(_: void, lhs: T, rhs: T) bool {
+    return lhs[1] < rhs[1];
+}
 pub const TokenRanker = struct {
-    str_to_id: std.StringHashMap(u32),
-    id_to_str: std.HashMap(u32, []const u8, std.hash_map.AutoContext(u32), std.hash_map.default_max_load_percentage),
+    str_to_id: std.StringHashMap(usize),
+    id_to_str: std.HashMap(usize, []const u8, std.hash_map.AutoContext(usize), std.hash_map.default_max_load_percentage),
+    tokens: std.ArrayList([]const u8),
     allocator: std.mem.Allocator,
-    _inner_bucket: std.ArrayList(u8),
     regex: Regex,
     const Self = @This();
     pub fn free(self: *Self) void {
         // Frees up bucket
         self.regex.deinit();
-        self.allocator.free(self._inner_bucket.items);
-        self.str_to_id.clearAndFree();
-        self.id_to_str.clearAndFree();
+        self.str_to_id.deinit();
+        self.id_to_str.deinit();
+        for (self.tokens.items) |token| {
+            self.allocator.free(token);
+        }
+        self.tokens.deinit();
     }
 
     pub fn from_file(file_path: []const u8, allocator: std.mem.Allocator) !Self {
@@ -25,85 +34,116 @@ pub const TokenRanker = struct {
         defer file.close();
         var buffer_reader = io.bufferedReader(file.reader());
         const content = try buffer_reader.reader().readAllAlloc(allocator, 5 * 1024 * 1024);
-        var contentString = utils.String{ .str = content };
-        contentString = contentString.skip_nlines(1);
         defer allocator.free(content);
-        return Self.from_string(contentString.str, allocator);
-    }
-
-    fn _char_vocab(bucket: *std.ArrayList(u8), hashmap: *std.StringHashMap(u32)) !usize {
-        var counter: u21 = 0;
-        var bucket_pointer: usize = 0;
-        for (0..std.math.maxInt(u21)) |i| {
-            if (counter > 255) {
-                break;
-            }
-            const codepoint: u21 = @intCast(i);
-            if (try utils.isPrint(@intCast(i))) {
-                const byte_length = try std.unicode.utf8CodepointSequenceLength(codepoint);
-                _ = try std.unicode.utf8Encode(codepoint, bucket.items[bucket_pointer .. bucket_pointer + byte_length]);
-                try hashmap.put(bucket.items[bucket_pointer .. bucket_pointer + byte_length], counter);
-                bucket_pointer += byte_length;
-                counter += 1;
-            }
-        }
-        return bucket_pointer;
+        return Self.from_string(content, allocator);
     }
 
     pub fn from_string(content: []const u8, allocator: std.mem.Allocator) !Self {
-        var hashmap = std.StringHashMap(u32).init(allocator);
-        var bucket = try std.ArrayList(u8).initCapacity(allocator, 512 + content.len);
-        bucket.expandToCapacity();
-        var bucket_pointer = try Self._char_vocab(&bucket, &hashmap);
+        var tokens = try std.ArrayList([]const u8).initCapacity(allocator, 100256);
+        tokens.expandToCapacity();
+
+        var str_to_id = std.StringHashMap(usize).init(allocator);
+
         var splits = std.mem.splitScalar(u8, content, '\n');
         while (splits.next()) |line| {
             const index = std.mem.indexOfScalar(u8, line, ' ') orelse continue;
-            @memcpy(bucket.items[bucket_pointer .. bucket_pointer + index], line[0..index]);
-            const second_string = line.len - (index + 1);
-            @memcpy(bucket.items[bucket_pointer + index .. bucket_pointer + index + second_string], line[index + 1 .. line.len]);
-            try hashmap.put(bucket.items[bucket_pointer .. bucket_pointer + line.len - 1], hashmap.count());
-            bucket_pointer += line.len - 1;
+            const decoded_len = try B64Decoder.calcSizeForSlice(line[0..index]);
+
+            var destination = try std.ArrayList(u8).initCapacity(allocator, decoded_len);
+            destination.expandToCapacity();
+            try B64Decoder.decode(destination.items, line[0..index]);
+            const rank = try std.fmt.parseInt(usize, line[index + 1 ..], 10);
+            tokens.items[rank] = try destination.toOwnedSlice();
+            try str_to_id.put(tokens.items[rank], rank);
         }
-        const id_to_str = try utils.revStrHashMap(u32, hashmap, allocator);
+        const id_to_str = try utils.revStrHashMap(usize, str_to_id, allocator);
+
         //IMPROVE: Make it modular
-        const re = try Regex.init(allocator,
-            \\'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+
-        , 0x00080000);
-        return Self{ .str_to_id = hashmap, .id_to_str = id_to_str, ._inner_bucket = bucket, .allocator = allocator, .regex = re };
+        // const regex_exp = .{
+        //     \\[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|
+        //     ,
+        //     \\[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|
+        //     ,
+        //     \\\p{N}{1,3}|
+        //     ,
+        //     \\ ?[^\s\p{L}\p{N}]+[\r\n]*|
+        //     ,
+        //     \\\s*[\r\n]+|
+        //     ,
+        //     \\\s+(?!\S)|
+        //     ,
+        //     \\\s+
+        // };
+        // const re_string = try std.mem.concatWithSentinel(allocator, u8, &regex_exp, 0);
+        const re_string =
+            \\'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+
+        ;
+        // std.debug.print("{s}\n", .{re_string});
+        const re = try Regex.init(allocator, re_string, 0x00080000);
+        return Self{ .tokens = tokens, .allocator = allocator, .regex = re, .str_to_id = str_to_id, .id_to_str = id_to_str };
     }
 
-    pub fn tokenize(self: *Self, data: []const u8, allocator: std.mem.Allocator) ![]const u32 {
+    pub fn tokenize(self: *Self, data: []const u8, allocator: std.mem.Allocator) ![]const usize {
         try self.regex.matchAll(data, 0, 0);
         if (!self.regex.succeed()) {
             return error.RegexMatchFailed;
         }
+        if (self.str_to_id.get(data)) |rank| {
+            return &.{rank};
+        }
+
         const results = self.regex.getResults().?;
-        var merge_tokens = std.ArrayList(u32).init(allocator);
-        for (results) |matched_result| {
-            const substr: []const u8 = data[matched_result.start .. matched_result.start + matched_result.len];
-            var start_pointer: usize = 0;
-            var end_pointer: usize = 0;
-            var moving_pointer: usize = 0;
-            var tokens = std.ArrayList(u32).init(allocator);
-            var token_id: u32 = undefined;
-            while (start_pointer < substr.len) {
-                while (moving_pointer < substr.len) {
-                    const o_token_id = self.str_to_id.get(substr[start_pointer .. moving_pointer + 1]);
-                    if (o_token_id) |latest_token_id| {
-                        token_id = latest_token_id;
-                        end_pointer = moving_pointer;
-                    }
-                    moving_pointer += 1;
+        var splits = std.ArrayList([][]const u8).init(allocator);
+        defer {
+            for (splits.items) |split| {
+                for (split) |sub_split| {
+                    allocator.free(sub_split);
                 }
-                try tokens.append(token_id);
-                start_pointer = end_pointer + 1;
-                moving_pointer = start_pointer;
+                allocator.free(split);
             }
-            try merge_tokens.appendSlice(tokens.items);
-            tokens.deinit();
+            splits.deinit();
+        }
+        for (results) |matched_result| {
+            const matched_string: []const u8 = data[matched_result.start .. matched_result.start + matched_result.len];
+            var collection = try allocator.alloc([]const u8, matched_result.len);
+            for (matched_string, 0..) |each_byte, each_byte_index| {
+                const byte_container = try allocator.alloc(u8, 1);
+                byte_container[0] = each_byte;
+                collection[each_byte_index] = byte_container;
+            }
+            try splits.append(collection);
+        }
+
+        for (self.tokens.items) |token| {
+            for (splits.items) |*split| {
+                var pointer: usize = 0;
+                while (pointer < split.len - 1) {
+                    const concat = try std.mem.concat(allocator, u8, &.{ split.*[pointer], split.*[pointer + 1] });
+                    if (std.mem.eql(u8, concat, token)) {
+                        allocator.free(split.*[pointer]);
+                        allocator.free(split.*[pointer + 1]);
+                        split.*[pointer] = concat;
+                        if (pointer != split.len - 1) {
+                            for (pointer + 2..split.len) |partial_pointer| {
+                                split.*[partial_pointer - 1] = split.*[partial_pointer];
+                            }
+                        }
+                        split.len = split.len - 1;
+                    } else {
+                        allocator.free(concat);
+                    }
+                    pointer += 1;
+                }
+            }
+        }
+        var token_ids = std.ArrayList(usize).init(allocator);
+        for (splits.items) |split| {
+            for (split) |i| {
+                try token_ids.append(self.str_to_id.get(i).?);
+            }
         }
         try self.regex.reset();
-        return merge_tokens.toOwnedSlice();
+        return try token_ids.toOwnedSlice();
     }
     pub fn detokenize(self: Self, tokens: []const u32, allocator: std.mem.Allocator) ![]const u8 {
         var text = std.ArrayList(u8).init(allocator);
@@ -177,4 +217,11 @@ test "Skip" {
     const text = try tr.detokenize(&.{ 502, 516, 82, 84, 82 }, allocator);
     defer allocator.free(text);
     try std.testing.expect(std.mem.eql(u8, text, "Ġmeousrtr"));
+}
+
+test {
+    const splits = std.ArrayList([][]const u8).init(undefined);
+    for (splits.items) |item| {
+        _ = item;
+    }
 }
