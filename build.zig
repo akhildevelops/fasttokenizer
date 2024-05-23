@@ -17,15 +17,17 @@ pub fn build(b: *std.Build) !void {
 
     // fasttokenizer module
     const fasttokenizer_module = b.addModule("fasttokenizer", .{ .root_source_file = .{ .path = "src/lib.zig" } });
-
+    const jstringdep = b.dependency("jstring", .{});
     // Temp executable
     var temp_exe = b.addExecutable(.{ .name = "temp_exe", .root_source_file = .{ .path = "scratchpad/temp.zig" }, .target = target, .optimize = optimize });
-    temp_exe.linkSystemLibrary("pcre2-8");
-    temp_exe.addIncludePath(.{ .path = "scratchpad" });
-    b.installArtifact(temp_exe);
-
-    const jstringdep = b.dependency("jstring", .{});
+    // temp_exe.linkSystemLibrary("pcre2-8");
+    temp_exe.linkLibC();
+    // fasttokenizer_module.addImport("jstring", jstringdep.module("jstring"));
     fasttokenizer_module.addImport("jstring", jstringdep.module("jstring"));
+    temp_exe.root_module.addImport("fasttokenizer", fasttokenizer_module);
+    // temp_exe.addIncludePath(.{ .path = "scratchpad" });
+    jstring_build.linkPCRE(temp_exe, jstringdep);
+    b.installArtifact(temp_exe);
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const lib_unit_tests = b.addTest(.{

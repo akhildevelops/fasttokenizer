@@ -15,7 +15,7 @@ test "sample" {
     const allocator = std.testing.allocator;
     var tr = try t.TokenRanker.from_file("scratchpad/gpt2tokens", allocator);
     defer tr.free();
-    const slice = try tr.tokenize("e to deal with Base", allocator);
+    const slice = try tr.tokenize("Operations on vectors shorter than the target machine's native SIMD size will typically compile to single ", allocator);
     defer std.testing.allocator.free(slice);
     std.debug.print("{any}\n", .{slice});
     // defer allocator.free(tokens);

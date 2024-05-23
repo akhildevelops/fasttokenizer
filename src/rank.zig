@@ -13,7 +13,7 @@ fn _less_than(_: void, lhs: T, rhs: T) bool {
 pub const TokenRanker = struct {
     str_to_id: std.StringHashMap(usize),
     id_to_str: std.HashMap(usize, []const u8, std.hash_map.AutoContext(usize), std.hash_map.default_max_load_percentage),
-    tokens: std.ArrayList([]const u8),
+    tokens: [100256][]const u8,
     allocator: std.mem.Allocator,
     regex: Regex,
     const Self = @This();
@@ -22,10 +22,10 @@ pub const TokenRanker = struct {
         self.regex.deinit();
         self.str_to_id.deinit();
         self.id_to_str.deinit();
-        for (self.tokens.items) |token| {
+        for (self.tokens) |token| {
             self.allocator.free(token);
         }
-        self.tokens.deinit();
+        // self.tokens.deinit();
     }
 
     pub fn from_file(file_path: []const u8, allocator: std.mem.Allocator) !Self {
@@ -39,10 +39,12 @@ pub const TokenRanker = struct {
     }
 
     pub fn from_string(content: []const u8, allocator: std.mem.Allocator) !Self {
-        var tokens = try std.ArrayList([]const u8).initCapacity(allocator, 100256);
-        tokens.expandToCapacity();
+        var tokens: [100256][]const u8 = undefined;
+        // try std.ArrayList([]const u8).initCapacity(allocator, 100256);
+        // tokens.expandToCapacity();
 
         var str_to_id = std.StringHashMap(usize).init(allocator);
+        try str_to_id.ensureTotalCapacity(100256);
 
         var splits = std.mem.splitScalar(u8, content, '\n');
         while (splits.next()) |line| {
@@ -53,8 +55,8 @@ pub const TokenRanker = struct {
             destination.expandToCapacity();
             try B64Decoder.decode(destination.items, line[0..index]);
             const rank = try std.fmt.parseInt(usize, line[index + 1 ..], 10);
-            tokens.items[rank] = try destination.toOwnedSlice();
-            try str_to_id.put(tokens.items[rank], rank);
+            tokens[rank] = try destination.toOwnedSlice();
+            try str_to_id.put(tokens[rank], rank);
         }
         const id_to_str = try utils.revStrHashMap(usize, str_to_id, allocator);
 
@@ -114,21 +116,26 @@ pub const TokenRanker = struct {
             try splits.append(collection);
         }
 
-        for (self.tokens.items) |token| {
+        for (self.tokens) |token| {
             for (splits.items) |*split| {
                 var pointer: usize = 0;
                 while (pointer < split.len - 1) {
                     const concat = try std.mem.concat(allocator, u8, &.{ split.*[pointer], split.*[pointer + 1] });
                     if (std.mem.eql(u8, concat, token)) {
-                        allocator.free(split.*[pointer]);
-                        allocator.free(split.*[pointer + 1]);
-                        split.*[pointer] = concat;
-                        if (pointer != split.len - 1) {
-                            for (pointer + 2..split.len) |partial_pointer| {
-                                split.*[partial_pointer - 1] = split.*[partial_pointer];
+                        var n_split = try allocator.alloc([]const u8, split.len - 1);
+                        for (0..n_split.len) |index| {
+                            if (index < pointer) {
+                                n_split[index] = split.*[index];
+                            } else if (index > pointer) {
+                                n_split[index] = split.*[index + 1];
+                            } else {
+                                n_split[index] = concat;
                             }
                         }
-                        split.len = split.len - 1;
+                        allocator.free(split.*[pointer]);
+                        allocator.free(split.*[pointer + 1]);
+                        allocator.free(split.*);
+                        split.* = n_split;
                     } else {
                         allocator.free(concat);
                     }
