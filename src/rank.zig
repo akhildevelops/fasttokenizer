@@ -39,6 +39,7 @@ pub const TokenRanker = struct {
     }
 
     pub fn from_string(content: []const u8, comptime model_type: []const u8, allocator: std.mem.Allocator) !Self {
+        std.debug.print("{d}\n", .{123});
         const Model = model.get_model(model_type);
         var tokens: [Model.n_tokens][]const u8 = undefined;
 
@@ -46,6 +47,7 @@ pub const TokenRanker = struct {
         try str_to_id.ensureTotalCapacity(Model.n_tokens);
 
         var splits = std.mem.splitScalar(u8, content, '\n');
+
         while (splits.next()) |line| {
             const index = std.mem.indexOfScalar(u8, line, ' ') orelse continue;
             const decoded_len = try B64Decoder.calcSizeForSlice(line[0..index]);

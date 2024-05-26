@@ -47,7 +47,7 @@ pub fn build(b: *std.Build) !void {
     lib_test_step.dependOn(&run_lib_unit_tests.step);
 
     // CLib
-    const clib = b.addSharedLibrary(.{ .link_libc = true, .name = "fasttokenizer", .optimize = optimize, .target = target, .root_source_file = .{ .path = "src/asclib.zig" } });
+    const clib = b.addSharedLibrary(.{ .name = "fasttokenizer", .optimize = optimize, .target = target, .root_source_file = .{ .path = "src/asclib.zig" } });
     clib.root_module.addImport("jstring", jstringdep.module("jstring"));
     jstring_build.linkPCRE(clib, jstringdep);
     b.installArtifact(clib);
