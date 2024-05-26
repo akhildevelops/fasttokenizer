@@ -13,7 +13,7 @@ const t = @import("fasttokenizer");
 
 test "sample" {
     const allocator = std.testing.allocator;
-    var tr = try t.TokenRanker.from_file("scratchpad/gpt2tokens", allocator);
+    var tr = try t.TokenRanker.from_file(allocator);
     defer tr.free();
     const slice = try tr.tokenize("Operations on vectors shorter than the target machine's native SIMD size will typically compile to single ", allocator);
     defer std.testing.allocator.free(slice);

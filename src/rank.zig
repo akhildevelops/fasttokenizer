@@ -1,6 +1,7 @@
 const std = @import("std");
 const B64Decoder = std.base64.standard.Decoder;
 const utils = @import("./utils.zig");
+const model = @import("./model.zig");
 const Regex = @import("jstring").Regex;
 const fs = std.fs;
 const io = std.io;
@@ -10,6 +11,7 @@ const T = struct { usize, usize };
 fn _less_than(_: void, lhs: T, rhs: T) bool {
     return lhs[1] < rhs[1];
 }
+
 pub const TokenRanker = struct {
     str_to_id: std.StringHashMap(usize),
     id_to_str: std.HashMap(usize, []const u8, std.hash_map.AutoContext(usize), std.hash_map.default_max_load_percentage),
@@ -18,33 +20,30 @@ pub const TokenRanker = struct {
     regex: Regex,
     const Self = @This();
     pub fn free(self: *Self) void {
-        // Frees up bucket
         self.regex.deinit();
         self.str_to_id.deinit();
         self.id_to_str.deinit();
         for (self.tokens) |token| {
             self.allocator.free(token);
         }
-        // self.tokens.deinit();
     }
 
-    pub fn from_file(file_path: []const u8, allocator: std.mem.Allocator) !Self {
+    pub fn from_file(comptime file_path: []const u8, comptime model_type: []const u8, allocator: std.mem.Allocator) !Self {
         const current_dir = fs.cwd();
         const file = try current_dir.openFile(file_path, .{});
         defer file.close();
         var buffer_reader = io.bufferedReader(file.reader());
         const content = try buffer_reader.reader().readAllAlloc(allocator, 5 * 1024 * 1024);
         defer allocator.free(content);
-        return Self.from_string(content, allocator);
+        return Self.from_string(content, model_type, allocator);
     }
 
-    pub fn from_string(content: []const u8, allocator: std.mem.Allocator) !Self {
-        var tokens: [100256][]const u8 = undefined;
-        // try std.ArrayList([]const u8).initCapacity(allocator, 100256);
-        // tokens.expandToCapacity();
+    pub fn from_string(content: []const u8, comptime model_type: []const u8, allocator: std.mem.Allocator) !Self {
+        const Model = model.get_model(model_type);
+        var tokens: [Model.n_tokens][]const u8 = undefined;
 
         var str_to_id = std.StringHashMap(usize).init(allocator);
-        try str_to_id.ensureTotalCapacity(100256);
+        try str_to_id.ensureTotalCapacity(Model.n_tokens);
 
         var splits = std.mem.splitScalar(u8, content, '\n');
         while (splits.next()) |line| {
@@ -77,11 +76,8 @@ pub const TokenRanker = struct {
         //     \\\s+
         // };
         // const re_string = try std.mem.concatWithSentinel(allocator, u8, &regex_exp, 0);
-        const re_string =
-            \\'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+
-        ;
         // std.debug.print("{s}\n", .{re_string});
-        const re = try Regex.init(allocator, re_string, 0x00080000);
+        const re = try Regex.init(allocator, Model.regex_pattern, 0x00080000);
         return Self{ .tokens = tokens, .allocator = allocator, .regex = re, .str_to_id = str_to_id, .id_to_str = id_to_str };
     }
 
