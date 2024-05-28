@@ -15,7 +15,7 @@ fn _less_than(_: void, lhs: T, rhs: T) bool {
 pub const TokenRanker = struct {
     str_to_id: std.StringHashMap(usize),
     id_to_str: std.HashMap(usize, []const u8, std.hash_map.AutoContext(usize), std.hash_map.default_max_load_percentage),
-    tokens: [100256][]const u8,
+    tokens: [][]const u8,
     allocator: std.mem.Allocator,
     regex: Regex,
     const Self = @This();
@@ -39,10 +39,11 @@ pub const TokenRanker = struct {
     }
 
     pub fn from_string(content: []const u8, comptime model_type: []const u8, allocator: std.mem.Allocator) !Self {
-        std.debug.print("{d}\n", .{123});
+        // std.debug.print("{d}\n", .{123});
         const Model = model.get_model(model_type);
-        var tokens: [Model.n_tokens][]const u8 = undefined;
-
+        const StaticTokens = struct {
+            var tokens: [Model.n_tokens][]const u8 = undefined;
+        };
         var str_to_id = std.StringHashMap(usize).init(allocator);
         try str_to_id.ensureTotalCapacity(Model.n_tokens);
 
@@ -56,8 +57,8 @@ pub const TokenRanker = struct {
             destination.expandToCapacity();
             try B64Decoder.decode(destination.items, line[0..index]);
             const rank = try std.fmt.parseInt(usize, line[index + 1 ..], 10);
-            tokens[rank] = try destination.toOwnedSlice();
-            try str_to_id.put(tokens[rank], rank);
+            StaticTokens.tokens[rank] = try destination.toOwnedSlice();
+            try str_to_id.put(StaticTokens.tokens[rank], rank);
         }
         const id_to_str = try utils.revStrHashMap(usize, str_to_id, allocator);
 
@@ -80,7 +81,7 @@ pub const TokenRanker = struct {
         // const re_string = try std.mem.concatWithSentinel(allocator, u8, &regex_exp, 0);
         // std.debug.print("{s}\n", .{re_string});
         const re = try Regex.init(allocator, Model.regex_pattern, 0x00080000);
-        return Self{ .tokens = tokens, .allocator = allocator, .regex = re, .str_to_id = str_to_id, .id_to_str = id_to_str };
+        return Self{ .tokens = StaticTokens.tokens[0..Model.n_tokens], .allocator = allocator, .regex = re, .str_to_id = str_to_id, .id_to_str = id_to_str };
     }
 
     pub fn tokenize(self: *Self, data: []const u8, allocator: std.mem.Allocator) ![]const usize {

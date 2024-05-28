@@ -7,3 +7,5 @@ scratchpad
 
 # Ignores Vscode settings
 .vscode
+
+file.txt
