@@ -14,5 +14,5 @@ def encode(text:bytes):
 
 if __name__=="__main__":
     with open("file.txt","rb") as file:
-        data = file.read(100)
+        data = file.read(10)
     encode(data)

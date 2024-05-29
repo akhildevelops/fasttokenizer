@@ -12,6 +12,7 @@ pub export fn encode(text: [*:0]c_char, token_length: *c_uint, ranker: *anyopaqu
     const allocator = std.heap.c_allocator;
     const data: []const u8 = @ptrCast(text[0..std.mem.len(text)]);
     var rranker: *Rank.TokenRanker = @ptrCast(@alignCast(ranker));
+    // defer rranker.free();
     const tokens = rranker.tokenize(data, allocator) catch @panic("Cannot tokenize");
     defer allocator.free(tokens);
     var c_int_array = std.ArrayList(c_uint).initCapacity(allocator, tokens.len) catch @panic("Cannot assign a new array");

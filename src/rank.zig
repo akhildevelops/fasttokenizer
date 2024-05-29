@@ -5,16 +5,12 @@ const model = @import("./model.zig");
 const Regex = @import("jstring").Regex;
 const fs = std.fs;
 const io = std.io;
-
-const T = struct { usize, usize };
-
-fn _less_than(_: void, lhs: T, rhs: T) bool {
-    return lhs[1] < rhs[1];
-}
-
+const RANKMAX = std.math.maxInt(u32);
+const INDEXMAX = std.math.maxInt(usize);
+const T = struct { usize, u32 };
 pub const TokenRanker = struct {
-    str_to_id: std.StringHashMap(usize),
-    id_to_str: std.HashMap(usize, []const u8, std.hash_map.AutoContext(usize), std.hash_map.default_max_load_percentage),
+    str_to_id: std.StringHashMap(u32),
+    id_to_str: std.HashMap(u32, []const u8, std.hash_map.AutoContext(u32), std.hash_map.default_max_load_percentage),
     tokens: [][]const u8,
     allocator: std.mem.Allocator,
     regex: Regex,
@@ -44,7 +40,7 @@ pub const TokenRanker = struct {
         const StaticTokens = struct {
             var tokens: [Model.n_tokens][]const u8 = undefined;
         };
-        var str_to_id = std.StringHashMap(usize).init(allocator);
+        var str_to_id = std.StringHashMap(u32).init(allocator);
         try str_to_id.ensureTotalCapacity(Model.n_tokens);
 
         var splits = std.mem.splitScalar(u8, content, '\n');
@@ -56,11 +52,11 @@ pub const TokenRanker = struct {
             var destination = try std.ArrayList(u8).initCapacity(allocator, decoded_len);
             destination.expandToCapacity();
             try B64Decoder.decode(destination.items, line[0..index]);
-            const rank = try std.fmt.parseInt(usize, line[index + 1 ..], 10);
+            const rank = try std.fmt.parseInt(u32, line[index + 1 ..], 10);
             StaticTokens.tokens[rank] = try destination.toOwnedSlice();
             try str_to_id.put(StaticTokens.tokens[rank], rank);
         }
-        const id_to_str = try utils.revStrHashMap(usize, str_to_id, allocator);
+        const id_to_str = try utils.revStrHashMap(u32, str_to_id, allocator);
 
         //IMPROVE: Make it modular
         // const regex_exp = .{
@@ -83,73 +79,60 @@ pub const TokenRanker = struct {
         const re = try Regex.init(allocator, Model.regex_pattern, 0x00080000);
         return Self{ .tokens = StaticTokens.tokens[0..Model.n_tokens], .allocator = allocator, .regex = re, .str_to_id = str_to_id, .id_to_str = id_to_str };
     }
-
-    pub fn tokenize(self: *Self, data: []const u8, allocator: std.mem.Allocator) ![]const usize {
+    inline fn get_rank(self: Self, token_indices: std.ArrayList(T), i: usize, word: []const u8) u32 {
+        if ((i + 3) < token_indices.items.len) {
+            return self.str_to_id.get(word[token_indices.items[i][0]..token_indices.items[i + 3][0]]) orelse RANKMAX;
+        }
+        return RANKMAX;
+    }
+    pub fn tokenize(self: *Self, data: []const u8, allocator: std.mem.Allocator) ![]const u32 {
         try self.regex.matchAll(data, 0, 0);
         if (!self.regex.succeed()) {
             return error.RegexMatchFailed;
         }
+        var tokens = std.ArrayList(u32).init(allocator);
         if (self.str_to_id.get(data)) |rank| {
-            return &.{rank};
+            try tokens.append(rank);
+            return tokens.toOwnedSlice();
         }
 
         const results = self.regex.getResults().?;
-        var splits = std.ArrayList([][]const u8).init(allocator);
-        defer {
-            for (splits.items) |split| {
-                for (split) |sub_split| {
-                    allocator.free(sub_split);
-                }
-                allocator.free(split);
-            }
-            splits.deinit();
-        }
+
         for (results) |matched_result| {
-            const matched_string: []const u8 = data[matched_result.start .. matched_result.start + matched_result.len];
-            var collection = try allocator.alloc([]const u8, matched_result.len);
-            for (matched_string, 0..) |each_byte, each_byte_index| {
-                const byte_container = try allocator.alloc(u8, 1);
-                byte_container[0] = each_byte;
-                collection[each_byte_index] = byte_container;
+            const word: []const u8 = data[matched_result.start .. matched_result.start + matched_result.len];
+            var token_indices = try std.ArrayList(T).initCapacity(allocator, word.len + 1);
+            defer token_indices.deinit();
+            var min_rank: T = .{ INDEXMAX, RANKMAX };
+            for (0..word.len - 1) |index| {
+                const rank = self.str_to_id.get(word[index .. index + 2]) orelse RANKMAX;
+                if (rank < min_rank[1]) {
+                    min_rank = .{ index, rank };
+                }
+                try token_indices.append(.{ index, rank });
             }
-            try splits.append(collection);
+            try token_indices.append(.{ word.len - 1, RANKMAX });
+            try token_indices.append(.{ word.len, RANKMAX });
+
+            while (min_rank[1] != RANKMAX) {
+                if (min_rank[0] != 0) {
+                    token_indices.items[min_rank[0] - 1][1] = self.get_rank(token_indices, min_rank[0] - 1, word);
+                }
+                token_indices.items[min_rank[0]][1] = self.get_rank(token_indices, min_rank[0], word);
+                _ = token_indices.orderedRemove(min_rank[0] + 1);
+                min_rank = .{ INDEXMAX, RANKMAX };
+                for (token_indices.items[0 .. token_indices.items.len - 1], 0..) |token_index, i| {
+                    if (token_index[1] < min_rank[1]) {
+                        min_rank = .{ i, token_index[1] };
+                    }
+                }
+            }
+            for (0..token_indices.items.len - 1) |index| {
+                const token_id = self.str_to_id.get(word[token_indices.items[index][0]..token_indices.items[index + 1][0]]).?;
+                try tokens.append(token_id);
+            }
         }
 
-        for (self.tokens) |token| {
-            for (splits.items) |*split| {
-                var pointer: usize = 0;
-                while (pointer < split.len - 1) {
-                    const concat = try std.mem.concat(allocator, u8, &.{ split.*[pointer], split.*[pointer + 1] });
-                    if (std.mem.eql(u8, concat, token)) {
-                        var n_split = try allocator.alloc([]const u8, split.len - 1);
-                        for (0..n_split.len) |index| {
-                            if (index < pointer) {
-                                n_split[index] = split.*[index];
-                            } else if (index > pointer) {
-                                n_split[index] = split.*[index + 1];
-                            } else {
-                                n_split[index] = concat;
-                            }
-                        }
-                        allocator.free(split.*[pointer]);
-                        allocator.free(split.*[pointer + 1]);
-                        allocator.free(split.*);
-                        split.* = n_split;
-                    } else {
-                        allocator.free(concat);
-                    }
-                    pointer += 1;
-                }
-            }
-        }
-        var token_ids = std.ArrayList(usize).init(allocator);
-        for (splits.items) |split| {
-            for (split) |i| {
-                try token_ids.append(self.str_to_id.get(i).?);
-            }
-        }
-        try self.regex.reset();
-        return try token_ids.toOwnedSlice();
+        return tokens.toOwnedSlice();
     }
     pub fn detokenize(self: Self, tokens: []const u32, allocator: std.mem.Allocator) ![]const u8 {
         var text = std.ArrayList(u8).init(allocator);
