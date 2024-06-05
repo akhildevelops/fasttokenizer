@@ -2,7 +2,8 @@ const std = @import("std");
 const B64Decoder = std.base64.standard.Decoder;
 const utils = @import("./utils.zig");
 const model = @import("./model.zig");
-const Regex = @import("jstring").Regex;
+// const Regex = @import("jstring").Regex;
+const Regex = @cImport(@cInclude("/home/akhil/practice/fancy-regex/fancy_regex.h"));
 const fs = std.fs;
 const io = std.io;
 const RANKMAX = std.math.maxInt(u32);
@@ -13,10 +14,10 @@ pub const TokenRanker = struct {
     id_to_str: std.HashMap(u32, []const u8, std.hash_map.AutoContext(u32), std.hash_map.default_max_load_percentage),
     tokens: [][]const u8,
     allocator: std.mem.Allocator,
-    regex: Regex,
+    regex: *const Regex.Regex,
     const Self = @This();
     pub fn free(self: *Self) void {
-        self.regex.deinit();
+        // self.regex.deinit();
         self.str_to_id.deinit();
         self.id_to_str.deinit();
         for (self.tokens) |token| {
@@ -76,7 +77,8 @@ pub const TokenRanker = struct {
         // };
         // const re_string = try std.mem.concatWithSentinel(allocator, u8, &regex_exp, 0);
         // std.debug.print("{s}\n", .{re_string});
-        const re = try Regex.init(allocator, Model.regex_pattern, 0x00080000);
+        // const re = try Regex.init(allocator, Model.regex_pattern, 0x00080000);
+        const re = Regex.get_regex(Model.regex_pattern.ptr).?;
         return Self{ .tokens = StaticTokens.tokens[0..Model.n_tokens], .allocator = allocator, .regex = re, .str_to_id = str_to_id, .id_to_str = id_to_str };
     }
     inline fn get_rank(self: Self, token_indices: std.ArrayList(T), i: usize, word: []const u8) u32 {
@@ -86,20 +88,25 @@ pub const TokenRanker = struct {
         return RANKMAX;
     }
     pub fn tokenize(self: *Self, data: []const u8, allocator: std.mem.Allocator) ![]const u32 {
-        try self.regex.matchAll(data, 0, 0);
-        if (!self.regex.succeed()) {
-            return error.RegexMatchFailed;
-        }
+        // try self.regex.matchAll(data, 0, 0);
+        // if (!self.regex.succeed()) {
+        //     return error.RegexMatchFailed;
+        // }
+        const matches = Regex.get_matches(self.regex, data.ptr).?;
+
         var tokens = std.ArrayList(u32).init(allocator);
         if (self.str_to_id.get(data)) |rank| {
             try tokens.append(rank);
             return tokens.toOwnedSlice();
         }
 
-        const results = self.regex.getResults().?;
-
-        for (results) |matched_result| {
-            const word: []const u8 = data[matched_result.start .. matched_result.start + matched_result.len];
+        // const results = self.regex.getResults().?;
+        var match_dim: Regex.MatchIndex = undefined;
+        while (Regex.next(matches, &match_dim)) {
+            // const word: []const u8 = data[matched_result.start .. matched_result.start + matched_result.len];
+            // std.debug.print("{d}:{d}\n", .{ match_dim.position, match_dim.length });
+            const word = data[match_dim.position..match_dim.length];
+            // std.debug.print("{d}:{d}:{d}\n", .{ match_dim.position, match_dim.length, word.len });
             var token_indices = try std.ArrayList(T).initCapacity(allocator, word.len + 1);
             defer token_indices.deinit();
             var min_rank: T = .{ INDEXMAX, RANKMAX };

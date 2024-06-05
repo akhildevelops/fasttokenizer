@@ -22,6 +22,8 @@ pub fn build(b: *std.Build) !void {
     var temp_exe = b.addExecutable(.{ .name = "temp_exe", .root_source_file = .{ .path = "scratchpad/temp.zig" }, .target = target, .optimize = optimize });
     // temp_exe.linkSystemLibrary("pcre2-8");
     temp_exe.linkLibC();
+    temp_exe.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
+    temp_exe.linkSystemLibrary2("fancy_regex", .{});
     // fasttokenizer_module.addImport("jstring", jstringdep.module("jstring"));
     fasttokenizer_module.addImport("jstring", jstringdep.module("jstring"));
     temp_exe.root_module.addImport("fasttokenizer", fasttokenizer_module);
@@ -50,6 +52,8 @@ pub fn build(b: *std.Build) !void {
     const clib = b.addSharedLibrary(.{ .link_libc = true, .name = "fasttokenizer", .optimize = optimize, .target = target, .root_source_file = .{ .path = "src/asclib.zig" } });
     clib.root_module.addImport("jstring", jstringdep.module("jstring"));
     jstring_build.linkPCRE(clib, jstringdep);
+    clib.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
+    clib.linkSystemLibrary2("fancy_regex", .{});
     b.installArtifact(clib);
 
     //Create test for all test files
