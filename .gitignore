@@ -9,3 +9,7 @@ scratchpad
 .vscode
 
 file.txt
+
+.venv
+*.egg-info
+*.so

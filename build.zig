@@ -42,6 +42,7 @@ pub fn build(b: *std.Build) !void {
     //// Unit Testing
     // Creates a test binary.
     // Test step is created to be run from commandline i.e, zig build test
+
     test_blk: {
         const test_file = std.fs.cwd().openFile("build.zig.zon", .{}) catch {
             break :test_blk;
@@ -57,6 +58,13 @@ pub fn build(b: *std.Build) !void {
         }
 
         const test_step = b.step("test", "Run library tests");
+        const lib_test = b.addTest(.{ .name = "libtests", .root_source_file = .{ .path = "src/lib.zig" }, .target = target, .optimize = optimize });
+        lib_test.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
+        lib_test.linkSystemLibrary2("fancy_regex", .{});
+        lib_test.linkLibC();
+        const run_lib_test = b.addRunArtifact(lib_test);
+        test_step.dependOn(&run_lib_test.step);
+
         const test_dir = try std.fs.cwd().openDir("test", .{ .iterate = true });
         var dir_iterator = try test_dir.walk(b.allocator);
         while (try dir_iterator.next()) |item| {
