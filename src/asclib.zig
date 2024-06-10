@@ -1,10 +1,10 @@
 const std = @import("std");
 const Rank = @import("./rank.zig");
 
-pub export fn token_ranker() *anyopaque {
+pub export fn token_ranker(name: [*:0]const u8, size: usize) *anyopaque {
     const allocator = std.heap.c_allocator;
     const ranker = allocator.create(Rank.TokenRanker) catch @panic("Cannot create TokenRanker in heap");
-    ranker.* = Rank.TokenRanker.from_file("/home/akhil/practice/fasttokenizer/scratchpad/gpt2tokens", "c100k_base", allocator) catch @panic("Cannot initialize TokenRanker");
+    ranker.* = Rank.TokenRanker.from_encoding_type(name[0..size], allocator) catch @panic("Cannot initialize TokenRanker");
     return ranker;
 }
 

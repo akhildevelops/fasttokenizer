@@ -12,10 +12,10 @@ const t = @import("fasttokenizer");
 // }
 
 test "sample" {
-    // const allocator = std.testing.allocator;
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    var tr = try t.TokenRanker.from_file("scratchpad/gpt2tokens", "c100k_base", allocator);
+    const allocator = std.testing.allocator;
+    // var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    // const allocator = gpa.allocator();
+    var tr = try t.TokenRanker.from_encoding_type("cl100k_base", allocator);
     defer tr.free();
     const slice = try tr.tokenize("Operations on vectors shorter than the target machine's native SIMD size will typically compile to single ", allocator);
     defer allocator.free(slice);
