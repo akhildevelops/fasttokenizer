@@ -60,8 +60,8 @@ pub fn build(b: *std.Build) !void {
 
         const test_step = b.step("test", "Run library tests");
         const lib_test = b.addTest(.{ .name = "libtests", .root_source_file = .{ .path = "src/lib.zig" }, .target = target, .optimize = optimize });
-        // lib_test.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
-        // lib_test.linkSystemLibrary2("fancy_regex", .{});
+        lib_test.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
+        lib_test.linkSystemLibrary2("fancy_regex", .{});
         lib_test.linkLibC();
         const run_lib_test = b.addRunArtifact(lib_test);
         test_step.dependOn(&run_lib_test.step);
@@ -77,8 +77,8 @@ pub fn build(b: *std.Build) !void {
                 const sub_test = b.addTest(.{ .name = item.path, .root_source_file = .{ .path = test_path }, .target = target, .optimize = optimize });
                 // Add Module
                 sub_test.root_module.addImport("fasttokenizer", fasttokenizer_module);
-                // sub_test.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
-                // sub_test.linkSystemLibrary2("fancy_regex", .{});
+                sub_test.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
+                sub_test.linkSystemLibrary2("fancy_regex", .{});
 
                 // Link libc, cuda and nvrtc libraries
                 sub_test.linkLibC();
