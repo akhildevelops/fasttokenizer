@@ -1,30 +1,12 @@
 const std = @import("std");
 const t = @import("fasttokenizer");
 
-// test "sample" {
-//     const allocator = std.testing.allocator;
-//     var tr = try t.TokenRanker.from_file("scratchpad/gpt2tokens", allocator);
-//     defer tr.free();
-//     const text = try tr.detokenize(&.{ 8269, 10535, 830 }, allocator);
-//     std.debug.print("{s}\n", .{text});
-//     defer allocator.free(text);
-//     try std.testing.expect(std.mem.eql(u8, text, "00000000000000000"));
-// }
-
 test "sample" {
     const allocator = std.testing.allocator;
-    var tr = try t.TokenRanker.from_file(allocator);
+
+    var tr = try t.TokenRanker.from_encoding_type("cl100k_base", allocator);
     defer tr.free();
     const slice = try tr.tokenize("Operations on vectors shorter than the target machine's native SIMD size will typically compile to single ", allocator);
-    defer std.testing.allocator.free(slice);
-    std.debug.print("{any}\n", .{slice});
-    // defer allocator.free(tokens);
-    // try std.testing.expect(std.mem.eql(u8, text, "fbf erfgarsg"));
+    defer allocator.free(slice);
+    try std.testing.expectEqualSlices(u32, &[_]u32{ 36220, 389, 23728, 24210, 1109, 279, 2218, 5780, 596, 10068, 67731, 1404, 690, 11383, 19742, 311, 3254, 220 }, slice);
 }
-
-// test "sdf" {
-//     const items: []struct { usize, usize } = undefined;
-//     for (items) |item| {
-//         _ = item[0];
-//     }
-// }

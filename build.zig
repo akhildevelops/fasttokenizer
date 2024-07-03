@@ -1,33 +1,21 @@
 const std = @import("std");
-const jstring_build = @import("jstring");
-// Although this function looks imperative, note that its job is to
-// declaratively construct a build graph that will be executed by an external
-// runner.
 pub fn build(b: *std.Build) !void {
-    // Standard target options allows the person running `zig build` to choose
-    // what target to build for. Here we do not override the defaults, which
-    // means any target is allowed, and the default is native. Other options
-    // for restricting supported target set are available.
     const target = b.standardTargetOptions(.{});
-
-    // Standard optimization options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
-    // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
     // fasttokenizer module
     const fasttokenizer_module = b.addModule("fasttokenizer", .{ .root_source_file = .{ .path = "src/lib.zig" } });
-    const jstringdep = b.dependency("jstring", .{});
+
     // Temp executable
     var temp_exe = b.addExecutable(.{ .name = "temp_exe", .root_source_file = .{ .path = "scratchpad/temp.zig" }, .target = target, .optimize = optimize });
     // temp_exe.linkSystemLibrary("pcre2-8");
     temp_exe.linkLibC();
-    // fasttokenizer_module.addImport("jstring", jstringdep.module("jstring"));
-    fasttokenizer_module.addImport("jstring", jstringdep.module("jstring"));
+    // temp_exe.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
+    // temp_exe.rp
+    temp_exe.linkSystemLibrary("fancy_regex");
     temp_exe.root_module.addImport("fasttokenizer", fasttokenizer_module);
-    // temp_exe.addIncludePath(.{ .path = "scratchpad" });
-    jstring_build.linkPCRE(temp_exe, jstringdep);
     b.installArtifact(temp_exe);
+
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const lib_unit_tests = b.addTest(.{
@@ -35,8 +23,6 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    lib_unit_tests.root_module.addImport("jstring", jstringdep.module("jstring"));
-    jstring_build.linkPCRE(lib_unit_tests, jstringdep);
     lib_unit_tests.linkLibC();
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
@@ -47,16 +33,17 @@ pub fn build(b: *std.Build) !void {
     lib_test_step.dependOn(&run_lib_unit_tests.step);
 
     // CLib
-    const clib = b.addSharedLibrary(.{ .link_libc = true, .name = "fasttokenizer", .optimize = optimize, .target = target, .root_source_file = .{ .path = "src/asclib.zig" } });
-    clib.root_module.addImport("jstring", jstringdep.module("jstring"));
-    jstring_build.linkPCRE(clib, jstringdep);
-    b.installArtifact(clib);
+    // const clib = b.addSharedLibrary(.{ .link_libc = true, .name = "fasttokenizer", .optimize = optimize, .target = target, .root_source_file = .{ .path = "src/asclib.zig" } });
+    // clib.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
+    // clib.linkSystemLibrary2("fancy_regex", .{});
+    // b.installArtifact(clib);
 
     //Create test for all test files
     ////////////////////////////////////////////////////////////
     //// Unit Testing
     // Creates a test binary.
     // Test step is created to be run from commandline i.e, zig build test
+
     test_blk: {
         const test_file = std.fs.cwd().openFile("build.zig.zon", .{}) catch {
             break :test_blk;
@@ -72,6 +59,13 @@ pub fn build(b: *std.Build) !void {
         }
 
         const test_step = b.step("test", "Run library tests");
+        const lib_test = b.addTest(.{ .name = "libtests", .root_source_file = .{ .path = "src/lib.zig" }, .target = target, .optimize = optimize });
+        lib_test.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
+        lib_test.linkSystemLibrary2("fancy_regex", .{});
+        lib_test.linkLibC();
+        const run_lib_test = b.addRunArtifact(lib_test);
+        test_step.dependOn(&run_lib_test.step);
+
         const test_dir = try std.fs.cwd().openDir("test", .{ .iterate = true });
         var dir_iterator = try test_dir.walk(b.allocator);
         while (try dir_iterator.next()) |item| {
@@ -83,10 +77,11 @@ pub fn build(b: *std.Build) !void {
                 const sub_test = b.addTest(.{ .name = item.path, .root_source_file = .{ .path = test_path }, .target = target, .optimize = optimize });
                 // Add Module
                 sub_test.root_module.addImport("fasttokenizer", fasttokenizer_module);
+                sub_test.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
+                sub_test.linkSystemLibrary2("fancy_regex", .{});
 
                 // Link libc, cuda and nvrtc libraries
                 sub_test.linkLibC();
-                jstring_build.linkPCRE(sub_test, jstringdep);
 
                 // Creates a run step for test binary
                 const run_sub_tests = b.addRunArtifact(sub_test);

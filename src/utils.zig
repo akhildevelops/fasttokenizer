@@ -1,14 +1,7 @@
 const std = @import("std");
-const jstring = @import("jstring");
 
-pub const Regex = struct {
-    regex: jstring.Regex,
-    const Self = @This();
-
-    pub fn init(pattern: []const u8, allocator: std.mem.Allocator) !Self {
-        return .{ .regex = try jstring.Regex.init(allocator, pattern, 0) };
-    }
-};
+const fs = std.fs;
+const io = std.io;
 
 pub const String = struct {
     str: []const u8,
@@ -114,6 +107,28 @@ pub fn isPrint(c: u21) error{ CodepointTooLarge, NotYetImplemented }!bool {
         else => error.NotYetImplemented,
     };
 }
+
+pub fn _download_file(url: []const u8, allocator: std.mem.Allocator) ![]const u8 {
+    var data = std.ArrayList(u8).init(allocator);
+    var client = std.http.Client{ .allocator = allocator };
+    _ = try client.fetch(.{ .location = .{ .url = url }, .response_storage = .{ .dynamic = &data } });
+    defer client.deinit();
+    return try data.toOwnedSlice();
+}
+
+pub fn _store_data(data: []const u8, file_path: []const u8) !void {
+    std.debug.print("{s}\n", .{file_path});
+    const file = try std.fs.createFileAbsolute(file_path, .{});
+    try file.writeAll(data);
+}
+pub fn read_file(file_path: []const u8, allocator: std.mem.Allocator) ![]const u8 {
+    const file = try std.fs.openFileAbsolute(file_path, .{});
+    defer file.close();
+    var buffer_reader = io.bufferedReader(file.reader());
+    const content = try buffer_reader.reader().readAllAlloc(allocator, 5 * 1024 * 1024);
+    return content;
+}
+// Check if tokenizer data exists
 
 test "revStHashmap" {
     var source = std.StringHashMap(u32).init(std.testing.allocator);
