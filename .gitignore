@@ -1,7 +1,7 @@
 # Ignores artifacts
 zig-cache
 zig-out
-
+.zig-cache
 # Ignores scratchpad
 scratchpad
 
