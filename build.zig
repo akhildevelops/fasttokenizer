@@ -4,10 +4,10 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     // fasttokenizer module
-    const fasttokenizer_module = b.addModule("fasttokenizer", .{ .root_source_file = .{ .path = "src/lib.zig" } });
+    const fasttokenizer_module = b.addModule("fasttokenizer", .{ .root_source_file = b.path("src/lib.zig") });
 
     // Temp executable
-    var temp_exe = b.addExecutable(.{ .name = "temp_exe", .root_source_file = .{ .path = "scratchpad/temp.zig" }, .target = target, .optimize = optimize });
+    var temp_exe = b.addExecutable(.{ .name = "temp_exe", .root_source_file = b.path("scratchpad/temp.zig"), .target = target, .optimize = optimize });
     // temp_exe.linkSystemLibrary("pcre2-8");
     temp_exe.linkLibC();
     // temp_exe.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
@@ -19,7 +19,7 @@ pub fn build(b: *std.Build) !void {
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const lib_unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/lib.zig" },
+        .root_source_file = b.path("src/lib.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -59,8 +59,8 @@ pub fn build(b: *std.Build) !void {
         }
 
         const test_step = b.step("test", "Run library tests");
-        const lib_test = b.addTest(.{ .name = "libtests", .root_source_file = .{ .path = "src/lib.zig" }, .target = target, .optimize = optimize });
-        lib_test.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
+        const lib_test = b.addTest(.{ .name = "libtests", .root_source_file = b.path("src/lib.zig"), .target = target, .optimize = optimize });
+        lib_test.addLibraryPath(b.path("../fancy-regex/target/release"));
         lib_test.linkSystemLibrary2("fancy_regex", .{});
         lib_test.linkLibC();
         const run_lib_test = b.addRunArtifact(lib_test);
@@ -74,10 +74,10 @@ pub fn build(b: *std.Build) !void {
                     continue;
                 }
                 const test_path = try std.fmt.allocPrint(b.allocator, "{s}/{s}", .{ "test", item.path });
-                const sub_test = b.addTest(.{ .name = item.path, .root_source_file = .{ .path = test_path }, .target = target, .optimize = optimize });
+                const sub_test = b.addTest(.{ .name = item.path, .root_source_file = b.path(test_path), .target = target, .optimize = optimize });
                 // Add Module
                 sub_test.root_module.addImport("fasttokenizer", fasttokenizer_module);
-                sub_test.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
+                sub_test.addLibraryPath(b.path("../fancy-regex/target/release"));
                 sub_test.linkSystemLibrary2("fancy_regex", .{});
 
                 // Link libc, cuda and nvrtc libraries
