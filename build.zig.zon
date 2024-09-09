@@ -16,7 +16,7 @@
     // internet connectivity.
     .dependencies = .{
         .jstring = .{
-            .url = "https://github.com/liyu1981/jstring.zig/tarball/master",
+            .url = "https://github.com/liyu1981/jstring.zig/tarball/main",
             .hash = "12207d845dc61fd773f1e0000cf6b4d83d8d9f2078f57d49eb3eb65502bad7e73cc4",
         },
     },
