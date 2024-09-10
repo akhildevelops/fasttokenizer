@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) !void {
 
     //Jstring
     const jstring_build = @import("jstring");
-    const jstring_dep = b.dependency("jstring", .{});
+    const jstring_dep = b.dependency("jstring", .{ .target = target, .optimize = optimize });
 
     // fasttokenizer module
     const fasttokenizer_module = b.addModule("fasttokenizer", .{ .root_source_file = b.path("src/lib.zig") });
