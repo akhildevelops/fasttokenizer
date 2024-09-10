@@ -27,10 +27,12 @@ pub fn build(b: *std.Build) !void {
     // lib_test_step.dependOn(&run_lib_unit_tests.step);
 
     // CLib
-    // const clib = b.addSharedLibrary(.{ .link_libc = true, .name = "fasttokenizer", .optimize = optimize, .target = target, .root_source_file = .{ .path = "src/asclib.zig" } });
+    const clib = b.addSharedLibrary(.{ .link_libc = true, .name = "fasttokenizer", .optimize = optimize, .target = target, .root_source_file = b.path("src/asclib.zig") });
+    clib.root_module.addImport("jstring", jstring_dep.module("jstring"));
+    jstring_build.linkPCRE(clib, jstring_dep);
     // clib.addLibraryPath(.{ .path = "/home/akhil/practice/fancy-regex/target/release" });
     // clib.linkSystemLibrary2("fancy_regex", .{});
-    // b.installArtifact(clib);
+    b.installArtifact(clib);
 
     //Create test for all test files
     ////////////////////////////////////////////////////////////
