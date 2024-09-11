@@ -25,7 +25,6 @@ pub const ENCODING = struct {
     }
 
     pub fn init(encoding_type: []const u8, allocator: std.mem.Allocator) !Self {
-        std.debug.print("{s}\n", .{encoding_type});
         var encoding_val: ?Self = null;
         const elements = .{
             .{
