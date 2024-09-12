@@ -67,7 +67,7 @@ pub const ENCODING = struct {
                 defer allocator.free(path);
                 const cache_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ path, ".cache/fasttokenizer" });
                 defer allocator.free(cache_path);
-                _ = try std.ChildProcess.run(.{ .allocator = allocator, .argv = &[_][]const u8{ "mkdir", "-p", cache_path } });
+                _ = try std.process.Child.run(.{ .allocator = allocator, .argv = &[_][]const u8{ "mkdir", "-p", cache_path } });
                 const file_path = try std.mem.concat(allocator, u8, &[_][]const u8{ cache_path, "/", encoding_type });
                 std.fs.accessAbsolute(file_path, .{}) catch |err| {
                     switch (err) {

@@ -77,7 +77,7 @@ pub fn build(b: *std.Build) !void {
                 const sub_test = b.addTest(.{ .name = item.path, .root_source_file = b.path(test_path), .target = target, .optimize = optimize });
                 // Add Module
                 sub_test.root_module.addImport("fasttokenizer", fasttokenizer_module);
-                sub_test.addLibraryPath(b.path("../fancy-regex/target/release"));
+                sub_test.addLibraryPath(b.path("../fancy-regex/target/debug"));
                 sub_test.linkSystemLibrary2("fancy_regex", .{});
 
                 // Link libc, cuda and nvrtc libraries

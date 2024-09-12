@@ -14,7 +14,7 @@ pub const TokenRanker = struct {
     str_to_id: std.StringHashMap(u32),
     id_to_str: std.HashMap(u32, []const u8, std.hash_map.AutoContext(u32), std.hash_map.default_max_load_percentage),
     allocator: std.mem.Allocator,
-    regex: *const Regex.Regex,
+    regex: ?*anyopaque,
     const Self = @This();
     pub fn free(self: *Self) void {
         var key_iter = self.str_to_id.keyIterator();
@@ -45,7 +45,7 @@ pub const TokenRanker = struct {
             try str_to_id.put(try destination.toOwnedSlice(), rank);
         }
         const id_to_str = try utils.revStrHashMap(u32, str_to_id, allocator);
-        const re = Regex.get_regex(e.regex_pattern.ptr).?;
+        const re = Regex.get_regex(@constCast(e.regex_pattern.ptr));
         return Self{ .allocator = allocator, .regex = re, .str_to_id = str_to_id, .id_to_str = id_to_str };
     }
 
@@ -56,16 +56,15 @@ pub const TokenRanker = struct {
         return RANKMAX;
     }
     pub fn tokenize(self: *Self, data: []const u8, allocator: std.mem.Allocator) ![]const u32 {
-        const matches = Regex.get_matches(self.regex, data.ptr).?;
+        const matches = Regex.get_matches(self.regex, @constCast(data.ptr)).?;
         var tokens = std.ArrayList(u32).init(allocator);
         if (self.str_to_id.get(data)) |rank| {
             try tokens.append(rank);
             return tokens.toOwnedSlice();
         }
 
-        var match_dim: Regex.MatchIndex = undefined;
-        while (Regex.next(matches, &match_dim)) {
-            const word = data[match_dim.position..match_dim.length];
+        while (Regex.next(matches)) |match| {
+            const word = data[match.*.start..match.*.end];
             var token_indices = try std.ArrayList(T).initCapacity(allocator, word.len + 1);
             defer token_indices.deinit();
 
